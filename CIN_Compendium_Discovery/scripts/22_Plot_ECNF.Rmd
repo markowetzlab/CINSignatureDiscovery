@@ -1,0 +1,365 @@
+---
+title: "Copy-number feature distributions"
+author: "Ruben M Drews et al."
+date: "27 September 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(circlize)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(dev=c('png'))
+options(tinytex.verbose = TRUE)
+
+## THISFILE and THISPATH should be supplied by calling this script.
+THISFILE=""
+THISPATH=""
+
+## Testing
+# THISFILE=file.path( THISPATH, "1_tcga_ecnf.rds" )
+# THISPATH="/Users/drews01/phd/prjcts/cnsigs2/data/2_OV_signatures_on_TCGA" 
+
+# For controlling output folder
+tcga.ecnf = readRDS( THISFILE )
+knitr::opts_knit$set(root.dir = THISPATH)
+
+```
+
+## segsize => Segment size
+
+The segment size is a measure between events and gives us a representation on how empty the genome is. If there are only a handful of events, then there should be multiple large segments aka empty chromosomes.
+
+```{r segment-quartiles, echo=FALSE}
+
+dat=as.numeric(tcga.ecnf[["segsize"]][,2])
+q5 = quantile(dat)
+qall = quantile(dat, probs=seq(0,1, by=0.05))
+
+q50 = quantile(dat, probs=0.50)
+q90 = quantile(dat, probs=0.90)
+q99 = quantile(dat, probs=0.95)
+
+show( round(q5))
+show( round(qall) )
+
+```
+
+The segments cover multiple order of magnitudes, from 6 to 2e8 (hundreds of million bp). However, over 20% of the data are smaller than 1MB. Another 35% (or 65%) in total are below 10MB. Another 20% are between 10 and 35MB. The other 25% go up to 240MB. With over 242MB, it means an empty chromosome 1 and / or 2 as their lengths are 249 and 242MB respectively.
+
+With 15% of the elements being larger than 60MB, I should have a look that a mixture model has at least one component in there to capture extreme events. Still, the majority of components shall be situated below 10MB.
+
+
+```{r segsize-hist, echo=FALSE, fig.height=6, dpi=100}
+h <- hist(dat, breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+# plot the histogram with the colours
+par(mfrow=c(2,2))
+plot(h, col=k, main="Segsize with quantile colouring")
+h$counts = log10(h$counts)
+plot(h, col=k, main="Log frequency")
+
+h <- hist(dat[dat<1e6], breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Segments < 1e6")
+
+h <- hist(dat[dat>1e8], breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Segments > 1e8")
+
+
+```
+
+Interestingly, whole empty chromosomes start to pop up. Hence, the spiky bars in subfigure d are decreasin as it is less likely that larger chromosomes are free of CNAs than smaller chromosomes. One observation which cannot be explained by whole chromosome size are the two spikes at 1.5e+08. The one just next to 1.4e+08 could be chromosome 8 (146MB) but the next one is chromosome 7 with 158MB, hence the two peaks between at around 150MB are as of now unexplained. My guess would be empty arms of chromosome 1 or 2. But I couldn't find reliable length information for the arms. In any case, another component over 1e8 (or 100MB) might be useful for encoding empty chromosomes.
+
+
+```{r segment-cdf, echo=FALSE, fig.height=6, dpi=100}
+par(mfrow=c(2,1))
+plot(ecdf(dat), main="CDF for feature segsize")
+plot(ecdf(dat[dat<q50]), main=paste( "CDF for feature segsize with segments <", q50,"(50% quartile)" ) )
+
+```
+
+There are no clear jumps recognisable with a clear and long-stretched descent, which might lead to the mixture model being very similar to a spline model due to probably evenly spaced mixture components.
+
+### Summary
+
+* definitely one component larger 60MB encoding empty chromosome armes => prior needed lesser than `r sum(dat>6e7)/length(dat)`
+* at least one component larger 100MB to represent empty chromosomes => prior needed lesser than `r sum(dat>1e8)/length(dat)`
+* potentially one component larger 200MB to represent empty chromosomes => prior needed lesser than `r sum(dat>2e8)/length(dat)`
+
+\newpage
+
+## bp10MB => CNA events per 10 MB
+
+This feature gives us a direct representation of the mutational density.
+
+```{r dens-quartiles, echo=FALSE}
+
+dat=as.numeric(tcga.ecnf[["bp10MB"]][,2])
+q5 = quantile(dat)
+qall = quantile(dat, probs=seq(0,1, by=0.05))
+q100 = quantile(dat, probs=seq(0,1, by=0.01))
+
+q50 = quantile(dat, probs=0.50)
+q90 = quantile(dat, probs=0.90)
+q99 = quantile(dat, probs=0.95)
+
+show( q5)
+show( qall )
+show( q100 )
+
+```
+
+Alright, this feature is mostly zeros. To be precise, 90% of the data. Another 2% at 1 and 2% at 2. And 1% or `r sum(dat>3)` elements are larger than 6. From this I guess around 3 or 4 mixture components will suffice. One for the zeros, one for each 1 and 2 and another one for extreme events over 3?
+
+```{r dens-hist, echo=FALSE, fig.height=6, dpi=100}
+
+par(mfrow=c(2,2))
+hist(dat, breaks=100, main="Histogram of bp10MB")
+hist(dat[dat>3], breaks=100, main="Events with > 3 CNAs per 10MB")
+hist(dat[dat>3 & dat<25], breaks=100, main="Events with between 3 and 25 CNAs per 10MB")
+hist(dat[dat>25], breaks=100, main="Events with > 25 CNAs per 10MB")
+
+```
+
+### Summary
+
+* probably less than 5 components
+* at least one component over 3 => prior < `r sum(dat>3)/length(dat)`
+* maybe one over 6 => prior < `r sum(dat>6)/length(dat)`
+
+\newpage
+
+## osCN => Oscillating copy-number
+
+This feature encodes the regularity of a copy-number change as it broadly represent chains of gains and losses. Whenever there is a change in copy-number from segment to segment and this reverses the previous inclining or declining order, this is seen as oscillating. When there are multiple oscillating segments following each other, this creates a chain and thus larger numbers.
+
+```{r oscn-quartiles, echo=FALSE}
+
+dat=as.numeric(tcga.ecnf[["osCN"]][,2])
+q5 = quantile(dat)
+qall = quantile(dat, probs=seq(0,1, by=0.05))
+q100 = quantile(dat, probs=seq(0,1, by=0.01))
+
+q50 = quantile(dat, probs=0.50)
+q90 = quantile(dat, probs=0.90)
+q99 = quantile(dat, probs=0.95)
+
+show( q5)
+show( qall )
+show( q100 )
+
+```
+
+Each segment should have one number. Zeros mean, that there is no CNA or a simple copy-number event. Only from a fourth jump (two states alternating between each other) has then a number larger than zero. As most events are spread out over the genome, this feature, again, is mostly an empty distribution. Thus, 75% are 0 with another 21% encoding 1's and 2's. The other 5% are representing extreme values.
+
+```{r oscn-hist, echo=FALSE, fig.height=6, dpi=100}
+
+par(mfrow=c(2,2))
+hist(dat, breaks=57, main="Histogram of oscillating copy-number")
+hist(dat[dat>2], breaks=50, main="Events with > 2 CNAs ")
+hist(dat[dat>2 & dat<10], breaks=7, main="Events with between 2 and 10 CNAs per 10MB")
+hist(dat[dat>10], breaks=50, main="Events with > 10 CNAs per 10MB")
+
+```
+
+This distribution will probably result in the smalles mixture model with probably 3, maybe 4 components. The last component should represent chains larger than 2.
+
+### Summary
+
+* 3 to 4 components
+* one component at 3 or higher => prior < `r sum(dat>2)/length(dat)`
+* one component at 8 or higher => prior < `r sum(dat>8)/length(dat)`
+
+
+\newpage
+
+## bpchrarm => Breakpoint per chromosome arm
+
+
+
+```{r bpchrarm-quartiles, echo=FALSE, dpi=100}
+
+dat=as.numeric(tcga.ecnf[["bpchrarm"]][,2])
+q5 = quantile(dat)
+qall = quantile(dat, probs=seq(0,1, by=0.05))
+q100 = quantile(dat, probs=seq(0,1, by=0.01))
+
+q50 = quantile(dat, probs=0.50)
+q90 = quantile(dat, probs=0.90)
+q99 = quantile(dat, probs=0.95)
+
+show( q5)
+show( qall )
+show( q100 )
+
+```
+
+Half the events (55%) are equal or lower than 2. Another 40% are representing 3 to 11 events. The last few percent show values between 10 and 356.
+
+```{r bpchrarm-hist, echo=FALSE, fig.height=6, dpi=100}
+
+# par(mfrow=c(2,2))
+# hist(dat, breaks=100, main="Histogram of breakpoints per chromosome arm")
+# hist(dat[dat>11 & dat<30], breaks=20, main="Events with between 11 and 30 CNAs per arm (50 to 90%)")
+# hist(dat[dat>30], breaks=50, main="Events with > 30 CNAs per arm (upper 10%)")
+# hist(dat[dat>100], breaks=50, main="Events with > 30 CNAs per arm (upper 1%)")
+
+par(mfrow=c(2,2))
+h <- hist(dat, breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Histogram of breakpoints per chromosome arm")
+
+h <- hist(dat[dat>11 & dat<30], breaks=22, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Events with between 11 and 30 CNAs per arm (50 to 90%)")
+
+
+h <- hist(dat[dat>30], breaks=50, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Events with > 30 CNAs per arm (upper 10%)")
+
+h <- hist(dat[dat>100], breaks=50, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k,  main="Events with > 30 CNAs per arm (upper 1%)")
+
+
+
+```
+
+### Summary
+
+* maybe 6 components?
+* one component maybe larger than 10 needs prior < `r sum(dat>10)/length(dat)`
+* one component maybe larger than 30 needs prior < `r sum(dat>30)/length(dat)`
+* with a prior of 1% I might differentiate larger `r quantile(dat, probs=0.99)` CNAs per chromosome arm
+
+
+\newpage
+
+## changepoint => Changepoint between CNAs
+
+Basically the delta between two neighbouring CNAs.
+
+```{r cp-quartiles, echo=FALSE}
+
+dat=as.numeric(tcga.ecnf[["changepoint"]][,2])
+q5 = quantile(dat)
+qall = quantile(dat, probs=seq(0,1, by=0.05))
+
+q50 = quantile(dat, probs=0.50)
+q90 = quantile(dat, probs=0.90)
+q99 = quantile(dat, probs=0.95)
+
+show( q5)
+show( qall )
+
+```
+
+The majority happens between 0.7 and 2.1, with 3/4 of all deltas seem to represent clonal changes with jumps of 1 or 2.
+
+```{r cp-hist, echo=FALSE, fig.height=6, dpi=100}
+
+par(mfrow=c(2,2))
+h <- hist(dat, breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Histogram of delta copy-number")
+
+h <- hist(dat[dat>1 & dat<4.2], breaks=22, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Events with a delta between 1 and 4.2  per arm (60 to 95%)")
+
+
+h <- hist(dat[dat>4], breaks=50, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Events with a delta > 4 (upper 10%)")
+
+h <- hist(dat[dat>100], breaks=50, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k,  main="Events with delta > 100 (upper 1%)")
+
+```
+
+## Summary
+
+* due to subclonal varieties of clonal jumps (e.g. jumps like 1.3 or 2.1) I guess the mixture model will fit at least two components per integer number. Probably more than 10 components due to the amount of samples.
+* I definitely want to have one component for deltas larger than 2 => prior < `r sum(dat>2)/length(dat)`
+* and larger 4 => prior < `r sum(dat>4)/length(dat)`
+* with a prior of 0.01% I might differentiate larger deltas than `r quantile(dat, probs=0.9999)`
+
+\newpage
+
+## copynumber => Copy-number of CNAs
+
+```{r cn-quartiles, echo=FALSE}
+
+dat=as.numeric(tcga.ecnf[["copynumber"]][,2])
+q5 = quantile(dat)
+qall = quantile(dat, probs=seq(0,1, by=0.05))
+
+q50 = quantile(dat, probs=0.50)
+q90 = quantile(dat, probs=0.90)
+q99 = quantile(dat, probs=0.95)
+
+show( q5)
+show( qall )
+
+```
+
+Quite similar to the delta distribution but with shifted values, as now 75% of all CNAs have equal or lower than 4 copies. Around 5% might have two whole-genome dupliations happening.
+
+```{r cn-hist, echo=FALSE, fig.height=9, dpi=100}
+
+par(mfrow=c(3,2))
+h <- hist(dat, breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Histogram of copy-number events")
+
+h <- hist(dat[dat>0 & dat<2], breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Losses (0 to 30%)")
+
+h <- hist(dat[dat>2 & dat<8], breaks=100, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Gains up tp 2xWGD (30 to 95%)") + abline(v=c(2:8), col = "red")
+
+h <- hist(dat[dat>6 & dat<50], breaks=50, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k, main="Events with a delta > 6 and < 50(upper 10%)")
+
+h <- hist(dat[dat>100], breaks=50, plot=F)
+cols <- c('grey', "#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072")
+k <- cols[findInterval(h$mid, quantile(dat), rightmost.closed=T, all.inside=F) +1]
+plot(h, col=k,  main="Events with extreme CN > 100 (upper 1%)")
+
+```
+
+
+
+```{r cn-cdf, echo=FALSE, fig.height=6, dpi=100}
+par(mfrow=c(2,1))
+plot(ecdf(dat[dat<q50]), main="CDF for events < 2.44 (50% quartile)")
+plot(ecdf(dat[dat>q50 & dat<q90]), main="CDF for events > 2.44 and < 5.5 (50 to 90% quartile)")
+```
+
+### Summary
+
+* definitely two components over 5 (probably more than 10 due to the amount of samples)
+* one at 8 => prior < `r sum(dat>8)/length(dat)`
+* and one capturing events over 20 or 30 (extreme events) => `r sum(dat>20)/length(dat)`
+* with a prior of 1% I might differentiate copy-numbers > `r quantile(dat, probs=0.99)`
