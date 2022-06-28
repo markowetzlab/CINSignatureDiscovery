@@ -1,4 +1,4 @@
-#!
+#!/bin/bash
 
 #### Deriving signatures from input matrix
 
@@ -73,20 +73,19 @@ for ITER in $(seq 1 $ITERS); do
 
     echo $ITER
 
+    pids=()
     for PAR in $(seq 1 $PARALLEL); do
 
         UUID=$(cat /dev/urandom | tr -dc 'A-Z0-9' | fold -w 6 | head -n 1)
         OUTPATH="${UUID}"
         mkdir -p $OUTPATH
         python $SCRIPTPATH --data $INPUTMATRIX --max_iter=$MAXITER --output_dir $OUTPATH $REGULARISATIONS --labeled --K0 $K0 > ${OUTPATH}/${UUID}_log.txt &
+        pids[${PAR}]=$!
 
     done
 
-    sleep 4
-    PYRUN=`nvidia-smi | grep -c python`
-    while [[ $PYRUN != 0 ]]; do
-        sleep 2
-        PYRUN=`nvidia-smi | grep -c python`
+    for pid in ${pids[*]}; do
+        wait $pid
     done
 
 done
