@@ -12,7 +12,7 @@ The main file is `scripts/00_WORKFLOW_SLURM.sh`. This file lists for each step w
 
 ## De-novo Signature Discovery
 
-To obtain signatures from copy number profiles, you will need to extract copy number features, calculate the posterior probability to the 43 feature components and sum the values for each patient / sample. This conversion of the copy number profiles to a 43D vector is a bespoke process but essentially a pre-processing step before the signature discovery can take place. Therefore, its code plus much more documentation can be found in the R package and the github repository [**SignatureQuantification**](https://github.com/markowetzlab/CINSignatureQuantification).
+To obtain signatures from copy number profiles, you will need to extract copy number features, calculate the posterior probability to the 43 feature components and sum the values for each patient / sample. This conversion of the copy number profiles to a 43D vector is a bespoke process but essentially a pre-processing step before the signature discovery can take place. Therefore, its code plus much more documentation can be found in the R package and the github repository [**CINSignatureQuantification**](https://github.com/markowetzlab/CINSignatureQuantification).
 
 Once you have obtained a matrix, you can use the code in this repository to identify signatures. For this code to run, you will need [SignatureAnalyzer-GPU](https://github.com/broadinstitute/SignatureAnalyzer-GPU) and have Pytorch (v1.4.0, Python 3.6) and CUDA toolkit installed (v10.0.130, Python 3.6). The easiest way is to create a conda environment called **bayesnmf** based on this specifications file: 
 ```
